@@ -4,17 +4,24 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 
-import React, { useState } from 'react';
-import { Globe, BookOpen, Sparkles, Map, ArrowRight } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Globe, BookOpen, Sparkles, Map, ArrowRight, History } from 'lucide-react';
 
 interface WizardProps {
   onComplete: (data: { name: string; ambient: string; lore: string }) => void;
+  onLoadRequest: () => void;
 }
 
-export const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
+export const Wizard: React.FC<WizardProps> = ({ onComplete, onLoadRequest }) => {
   const [name, setName] = useState('');
   const [ambient, setAmbient] = useState('Cyberpunk Forest');
   const [lore, setLore] = useState('');
+  const [hasSave, setHasSave] = useState(false);
+
+  useEffect(() => {
+    const save = localStorage.getItem('gemini_chronicles_save');
+    if (save) setHasSave(true);
+  }, []);
 
   return (
     <div className="fixed inset-0 z-[100] bg-slate-950 flex items-center justify-center p-6 font-sans overflow-y-auto">
@@ -69,13 +76,23 @@ export const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
             />
           </div>
 
-          <button 
-            onClick={() => onComplete({ name, ambient, lore })}
-            disabled={!name.trim()}
-            className="w-full py-5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-black rounded-2xl shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2 transition-all active:scale-95 group"
-          >
-            INITIALIZE UNIVERSE <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
-          </button>
+          <div className="flex gap-4">
+            {hasSave && (
+              <button 
+                onClick={onLoadRequest}
+                className="flex-1 py-5 bg-slate-800 hover:bg-slate-700 text-indigo-400 font-black rounded-2xl shadow-lg flex items-center justify-center gap-2 transition-all active:scale-95 group border-2 border-slate-700"
+              >
+                RESUME LAST REALITY <History size={20} />
+              </button>
+            )}
+            <button 
+              onClick={() => onComplete({ name, ambient, lore })}
+              disabled={!name.trim()}
+              className="flex-[2] py-5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-black rounded-2xl shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2 transition-all active:scale-95 group"
+            >
+              INITIALIZE UNIVERSE <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
+            </button>
+          </div>
         </div>
       </div>
     </div>
