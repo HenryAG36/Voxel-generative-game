@@ -11,7 +11,7 @@ import { Wizard } from './components/Wizard';
 import { PromptModal } from './components/PromptModal';
 import { AppState, WorldManifesto, GameEntity, SaveData } from './types';
 import { GoogleGenAI, Type } from "@google/genai";
-import { Shield, Zap, Sword, Move, Brain, Loader2, Info, AlertTriangle, MousePointer2, Sparkles, Save, FolderOpen } from 'lucide-react';
+import { Shield, Zap, Sword, Move, Brain, Loader2, Info, AlertTriangle, MousePointer2, Sparkles, Save, FolderOpen, RefreshCcw } from 'lucide-react';
 
 const LoadingScreen: React.FC<{ message: string; progress: number }> = ({ message, progress }) => {
   const [subMsg, setSubMsg] = useState('Syncing Neural Pathways...');
@@ -87,10 +87,27 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState({ active: false, msg: '', progress: 0 });
   const [error, setError] = useState<string | null>(null);
   const [isLocked, setIsLocked] = useState(false);
-  const [notifications, setNotifications] = useState<{ id: string, msg: string, color: string }[]>([]);
+  const [notifications, setNotifications] = useState<{ id: string, msg: string, color: string, isAuto?: boolean }[]>([]);
+  const [isAutoSaving, setIsAutoSaving] = useState(false);
 
   const joystickRef = useRef<{ active: boolean, start: {x: number, y: number} }>({ active: false, start: {x: 0, y: 0} });
   const [joystickOffset, setJoystickOffset] = useState({ x: 0, y: 0 });
+
+  // Handle Auto-save Timer
+  useEffect(() => {
+    let autoSaveInterval: number | null = null;
+
+    if (gameState === AppState.PLAYING) {
+      // Set up interval for 2 minutes (120,000 ms)
+      autoSaveInterval = window.setInterval(() => {
+        saveGame(true);
+      }, 120000);
+    }
+
+    return () => {
+      if (autoSaveInterval) clearInterval(autoSaveInterval);
+    };
+  }, [gameState, world, player]); // Re-bind when crucial state changes to ensure closure has latest data
 
   useEffect(() => {
     if (!containerRef.current || gameState === AppState.WIZARD) return;
@@ -149,10 +166,10 @@ const App: React.FC = () => {
     };
   }, [gameState, player, joystickOffset]);
 
-  const notify = (msg: string, color: string = '#818cf8') => {
+  const notify = (msg: string, color: string = '#818cf8', isAuto: boolean = false) => {
     const id = Math.random().toString();
-    setNotifications(prev => [...prev, { id, msg, color }]);
-    setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 3000);
+    setNotifications(prev => [...prev, { id, msg, color, isAuto }]);
+    setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), isAuto ? 5000 : 3000);
   };
 
   const executeSkill = (index: number) => {
@@ -272,8 +289,11 @@ const App: React.FC = () => {
     }
   };
 
-  const saveGame = () => {
-    if (!world || !player || !engineRef.current) return;
+  const saveGame = (isAuto: boolean = false) => {
+    if (!world || !player || !engineRef.current || player.isDead) return;
+    
+    if (isAuto) setIsAutoSaving(true);
+
     try {
       const allEntities = engineRef.current.getAllEntities();
       const serializedEntities = allEntities.filter(e => e.type !== 'player').map(e => ({
@@ -295,10 +315,17 @@ const App: React.FC = () => {
       };
 
       localStorage.setItem('gemini_chronicles_save', JSON.stringify(saveData));
-      notify("Real-world persistence synchronized.", "#22c55e");
+      
+      if (isAuto) {
+        notify("Timeline automatically secured.", "#6366f1", true);
+        setTimeout(() => setIsAutoSaving(false), 2000);
+      } else {
+        notify("Real-world persistence synchronized.", "#22c55e");
+      }
     } catch (e) {
       console.error(e);
-      notify("Memory Leak: Failed to synchronize reality.", "#ef4444");
+      if (!isAuto) notify("Memory Leak: Failed to synchronize reality.", "#ef4444");
+      setIsAutoSaving(false);
     }
   };
 
@@ -403,7 +430,12 @@ const App: React.FC = () => {
       {notifications.length > 0 && (
         <div className="absolute top-32 right-12 z-[250] flex flex-col gap-2">
            {notifications.map(n => (
-             <div key={n.id} style={{ color: n.color, borderColor: n.color + '44' }} className="bg-slate-900/90 backdrop-blur-md px-4 py-2 rounded-xl border font-black text-xs uppercase tracking-widest animate-in slide-in-from-right-4 fade-in">
+             <div 
+               key={n.id} 
+               style={{ color: n.color, borderColor: n.color + '44' }} 
+               className={`bg-slate-900/90 backdrop-blur-md px-4 py-2 rounded-xl border font-black text-xs uppercase tracking-widest animate-in slide-in-from-right-4 fade-in ${n.isAuto ? 'animate-pulse' : ''}`}
+             >
+               {n.isAuto && <RefreshCcw size={10} className="inline mr-2 animate-spin" />}
                {n.msg}
              </div>
            ))}
@@ -412,7 +444,7 @@ const App: React.FC = () => {
 
       {gameState === AppState.PLAYING && player && (
           <>
-            <HUD player={player} worldName={world?.name || "The Void"} onSkillUse={executeSkill} onSave={saveGame} onLoad={loadGame} />
+            <HUD player={player} worldName={world?.name || "The Void"} onSkillUse={executeSkill} onSave={() => saveGame(false)} onLoad={loadGame} isAutoSaving={isAutoSaving} />
             
             {!isLocked && (
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-40 bg-indigo-600/90 text-white px-8 py-4 rounded-3xl font-black flex items-center gap-3 animate-pulse pointer-events-none shadow-2xl border-2 border-indigo-400">
@@ -442,7 +474,7 @@ const App: React.FC = () => {
   );
 };
 
-const HUD = ({ player, worldName, onSkillUse, onSave, onLoad }: any) => {
+const HUD = ({ player, worldName, onSkillUse, onSave, onLoad, isAutoSaving }: any) => {
     const hpPercent = (player.stats.hp / player.stats.maxHp) * 100;
     
     let powerBonus = 0;
@@ -459,7 +491,14 @@ const HUD = ({ player, worldName, onSkillUse, onSave, onLoad }: any) => {
             <div className="flex justify-between items-start">
                 <div className="bg-slate-900/90 backdrop-blur-xl border border-slate-700 p-6 rounded-[2.5rem] min-w-[320px] pointer-events-auto shadow-2xl">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">{worldName}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">{worldName}</span>
+                        {isAutoSaving && (
+                           <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 text-[8px] font-black uppercase tracking-widest animate-pulse">
+                              <RefreshCcw size={8} className="animate-spin" /> Auto-saving
+                           </div>
+                        )}
+                      </div>
                       <div className="flex items-center gap-2">
                          <button onClick={onSave} className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white transition-colors" title="Save Universe"><Save size={14}/></button>
                          <button onClick={onLoad} className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white transition-colors" title="Load Universe"><FolderOpen size={14}/></button>
